@@ -1,6 +1,6 @@
 # DeepGEMM
 
-DeepGEMM is a library designed for clean and efficient General Matrix Multiplications (GEMMs). It supports FP8 and BF16 (working in progress) for both normal and Mix-of-Experts (MoE) grouped scenarios. Written in CUDA, the library has no kernel compilation need during installation, by compiling all kernels at runtime using a lightweight Just-In-Time (JIT) module.
+DeepGEMM is a library designed for clean and efficient General Matrix Multiplications (GEMMs). It supports FP8 and BF16 (working in progress) for both normal and Mix-of-Experts (MoE) grouped scenarios. The original implementation is CUDA-first and compiles most kernels at runtime using a lightweight Just-In-Time (JIT) module.
 
 DeepGEMM leverages some concepts from [CUTLASS](https://github.com/nvidia/cutlass) and [CuTe](https://github.com/NVIDIA/cutlass/tree/main/include/cute), it avoids heavy reliance on their templates or algebras. Instead, the library is designed for simplicity, with only a limited number of core kernel functions. This makes it a clean and accessible resource for learning NVIDIA GPU kernel optimization techniques.
 
@@ -55,6 +55,56 @@ Despite its lightweight design, DeepGEMM's performance matches or exceeds expert
 - CUTLASS 4.0 or higher (could be cloned by Git submodule)
 - `{fmt}` library (could be cloned by Git submodule)
 
+### ROCm status
+
+DeepGEMM now has an initial ROCm/HIP compatibility path for AMD GPUs. The current ROCm backend is intentionally conservative: it keeps the existing CUDA JIT kernels unchanged and provides a Python fallback backend for the first-stage BF16 feature set.
+
+Current ROCm coverage:
+
+- `bf16_gemm_{nt,nn,tn,tt}`
+- `m_grouped_bf16_gemm_{nt,nn}_contiguous`
+- `m_grouped_bf16_gemm_nt_masked`
+- `k_grouped_bf16_gemm_tn_contiguous`
+- `fp8_gemm_{nt,nn,tn,tt}` functional fallbacks
+- `fp8_fp4_gemm_{nt,nn,tn,tt}` functional fallbacks
+- `m_grouped_fp8_gemm_{nt,nn}_contiguous`
+- `m_grouped_fp8_gemm_nt_masked`
+- `m_grouped_fp8_fp4_gemm_{nt,nn}_contiguous`
+- `m_grouped_fp8_fp4_gemm_nt_masked`
+- `k_grouped_fp8_gemm_{nt,tn}_contiguous`
+- `fp8_gemm_nt_skip_head_mid`
+- `einsum('bmk,bnk->mn')`
+- `einsum('bhr,hdr->bhd')`
+- `einsum('bhd,hdr->bhr')`
+- `cublaslt_gemm_*` API-compatible fallbacks
+
+Current ROCm non-goals in this stage:
+
+- MQA / paged MQA kernels
+- Hyperconnection kernels
+- NVIDIA-specific TMA / UMMA / WGMMA JIT kernels
+
+Notes for the current ROCm FP8 path:
+
+- These FP8/FP4 APIs are correctness-first fallbacks built on dequantization plus PyTorch GEMM primitives.
+- They are intended to unblock functionality and integration work, especially for MoE expert compute paths.
+- They are not yet a replacement for the original CUDA high-performance kernels.
+
+Supported AMD targets in this stage:
+
+- `gfx942`
+- `gfx950`
+
+If your environment fails to auto-detect the AMD GPU target, set `TORCH_CUDA_ARCH_LIST` explicitly before install/build, for example:
+
+```bash
+export TORCH_CUDA_ARCH_LIST=gfx942
+# or
+export TORCH_CUDA_ARCH_LIST=gfx950
+# or build a multi-target wheel
+export TORCH_CUDA_ARCH_LIST=gfx942,gfx950
+```
+
 ### Development
 
 ```bash
@@ -71,6 +121,8 @@ python tests/test_layout.py
 python tests/test_attention.py
 python tests/test_core.py
 ```
+
+On ROCm, `develop.sh` will skip the CUDA extension symlink step and use the Python fallback backend instead.
 
 ### Installation
 

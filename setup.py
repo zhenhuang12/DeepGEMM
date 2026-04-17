@@ -23,6 +23,7 @@ DG_SKIP_CUDA_BUILD = int(os.getenv('DG_SKIP_CUDA_BUILD', '0')) == 1
 DG_FORCE_BUILD = int(os.getenv('DG_FORCE_BUILD', '0')) == 1
 DG_USE_LOCAL_VERSION = int(os.getenv('DG_USE_LOCAL_VERSION', '1')) == 1
 DG_JIT_USE_RUNTIME_API = int(os.environ.get('DG_JIT_USE_RUNTIME_API', '0')) == 1
+DG_IS_ROCM = bool(torch.version.hip)
 
 # Compiler flags
 cxx_flags = ['-std=c++17', '-O3', '-fPIC', '-Wno-psabi', '-Wno-deprecated-declarations',
@@ -33,15 +34,11 @@ if DG_JIT_USE_RUNTIME_API:
 # Sources
 current_dir = os.path.dirname(os.path.realpath(__file__))
 sources = ['csrc/python_api.cpp']
-build_include_dirs = [
-    f'{CUDA_HOME}/include',
-    f'{CUDA_HOME}/include/cccl',
-    'deep_gemm/include',
-    'third-party/cutlass/include',
-    'third-party/fmt/include',
-]
-build_libraries = ['cudart', 'nvrtc']
-build_library_dirs = [f'{CUDA_HOME}/lib64']
+build_include_dirs = ['deep_gemm/include', 'third-party/cutlass/include', 'third-party/fmt/include']
+if CUDA_HOME is not None:
+    build_include_dirs = [f'{CUDA_HOME}/include', f'{CUDA_HOME}/include/cccl'] + build_include_dirs
+build_libraries = ['cudart', 'nvrtc'] if not DG_IS_ROCM else []
+build_library_dirs = [f'{CUDA_HOME}/lib64'] if CUDA_HOME is not None and not DG_IS_ROCM else []
 third_party_include_dirs = [
     'third-party/cutlass/include/cute',
     'third-party/cutlass/include/cutlass',
@@ -81,6 +78,9 @@ def get_platform():
 
 
 def get_wheel_url():
+    if DG_IS_ROCM or not torch.version.cuda:
+        raise RuntimeError('No prebuilt CUDA wheel available for ROCm builds')
+
     torch_version = parse(torch.__version__)
     torch_version = f'{torch_version.major}.{torch_version.minor}'
     python_version = f'cp{sys.version_info.major}{sys.version_info.minor}'
@@ -100,7 +100,7 @@ def get_wheel_url():
 
 
 def get_ext_modules():
-    if DG_SKIP_CUDA_BUILD:
+    if DG_SKIP_CUDA_BUILD or DG_IS_ROCM:
         return []
 
     return [CUDAExtension(name='deep_gemm._C',
@@ -167,7 +167,7 @@ class CustomBuildPy(build_py):
 
 class CachedWheelsCommand(_bdist_wheel):
     def run(self):
-        if DG_FORCE_BUILD or DG_USE_LOCAL_VERSION:
+        if DG_FORCE_BUILD or DG_USE_LOCAL_VERSION or DG_IS_ROCM:
             return super().run()
 
         wheel_url, wheel_filename = get_wheel_url()

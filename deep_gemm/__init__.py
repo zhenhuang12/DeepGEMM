@@ -12,66 +12,122 @@ try:
 except ImportError:
     pass
 
-# Configs
-from . import _C
-from ._C import (
-    set_num_sms,
-    get_num_sms,
-    set_tc_util,
-    get_tc_util,
-)
+_IS_ROCM = bool(torch.version.hip)
 
-# cuBLASLt Kernels
-from ._C import (
-    cublaslt_gemm_nt, cublaslt_gemm_nn,
-    cublaslt_gemm_tn, cublaslt_gemm_tt,
-)
-
-try:
-    # DeepGEMM Kernels
-    from ._C import (
-        # FP8 FP4 GEMMs
-        fp8_fp4_gemm_nt, fp8_fp4_gemm_nn,
-        fp8_fp4_gemm_tn, fp8_fp4_gemm_tt,
+if _IS_ROCM:
+    from . import _rocm as _backend
+    from ._rocm import (
+        set_num_sms,
+        get_num_sms,
+        set_tc_util,
+        get_tc_util,
+        cublaslt_gemm_nt,
+        cublaslt_gemm_nn,
+        cublaslt_gemm_tn,
+        cublaslt_gemm_tt,
+        fp8_fp4_gemm_nt,
+        fp8_fp4_gemm_nn,
+        fp8_fp4_gemm_tn,
+        fp8_fp4_gemm_tt,
         m_grouped_fp8_fp4_gemm_nt_contiguous,
         m_grouped_fp8_fp4_gemm_nn_contiguous,
         m_grouped_fp8_fp4_gemm_nt_masked,
-        # FP8 GEMMs
-        fp8_gemm_nt, fp8_gemm_nn,
-        fp8_gemm_tn, fp8_gemm_tt,
+        fp8_gemm_nt,
+        fp8_gemm_nn,
+        fp8_gemm_tn,
+        fp8_gemm_tt,
         fp8_gemm_nt_skip_head_mid,
         m_grouped_fp8_gemm_nt_contiguous,
         m_grouped_fp8_gemm_nn_contiguous,
         m_grouped_fp8_gemm_nt_masked,
         k_grouped_fp8_gemm_nt_contiguous,
         k_grouped_fp8_gemm_tn_contiguous,
-        # BF16 GEMMs
-        bf16_gemm_nt, bf16_gemm_nn,
-        bf16_gemm_tn, bf16_gemm_tt,
+        bf16_gemm_nt,
+        bf16_gemm_nn,
+        bf16_gemm_tn,
+        bf16_gemm_tt,
         m_grouped_bf16_gemm_nt_contiguous,
         m_grouped_bf16_gemm_nn_contiguous,
         m_grouped_bf16_gemm_nt_masked,
         k_grouped_bf16_gemm_tn_contiguous,
-        # Einsum kernels
         einsum,
         fp8_einsum,
-        # Attention kernels
         fp8_mqa_logits,
         get_paged_mqa_logits_metadata,
         fp8_paged_mqa_logits,
-        # Hyperconnection kernels
         tf32_hc_prenorm_gemm,
-        # Layout kernels
         transform_sf_into_required_layout,
-        get_mk_alignment_for_contiguous_layout
+        get_mk_alignment_for_contiguous_layout,
+    )
+else:
+    # Configs
+    from . import _C
+    from ._C import (
+        set_num_sms,
+        get_num_sms,
+        set_tc_util,
+        get_tc_util,
     )
 
-    # Some alias for legacy supports
-    # TODO: remove these later
+    # cuBLASLt Kernels
+    from ._C import (
+        cublaslt_gemm_nt, cublaslt_gemm_nn,
+        cublaslt_gemm_tn, cublaslt_gemm_tt,
+    )
+
+    try:
+        # DeepGEMM Kernels
+        from ._C import (
+            # FP8 FP4 GEMMs
+            fp8_fp4_gemm_nt, fp8_fp4_gemm_nn,
+            fp8_fp4_gemm_tn, fp8_fp4_gemm_tt,
+            m_grouped_fp8_fp4_gemm_nt_contiguous,
+            m_grouped_fp8_fp4_gemm_nn_contiguous,
+            m_grouped_fp8_fp4_gemm_nt_masked,
+            # FP8 GEMMs
+            fp8_gemm_nt, fp8_gemm_nn,
+            fp8_gemm_tn, fp8_gemm_tt,
+            fp8_gemm_nt_skip_head_mid,
+            m_grouped_fp8_gemm_nt_contiguous,
+            m_grouped_fp8_gemm_nn_contiguous,
+            m_grouped_fp8_gemm_nt_masked,
+            k_grouped_fp8_gemm_nt_contiguous,
+            k_grouped_fp8_gemm_tn_contiguous,
+            # BF16 GEMMs
+            bf16_gemm_nt, bf16_gemm_nn,
+            bf16_gemm_tn, bf16_gemm_tt,
+            m_grouped_bf16_gemm_nt_contiguous,
+            m_grouped_bf16_gemm_nn_contiguous,
+            m_grouped_bf16_gemm_nt_masked,
+            k_grouped_bf16_gemm_tn_contiguous,
+            # Einsum kernels
+            einsum,
+            fp8_einsum,
+            # Attention kernels
+            fp8_mqa_logits,
+            get_paged_mqa_logits_metadata,
+            fp8_paged_mqa_logits,
+            # Hyperconnection kernels
+            tf32_hc_prenorm_gemm,
+            # Layout kernels
+            transform_sf_into_required_layout,
+            get_mk_alignment_for_contiguous_layout
+        )
+
+        # Some alias for legacy supports
+        # TODO: remove these later
+        fp8_m_grouped_gemm_nt_masked = m_grouped_fp8_gemm_nt_masked
+        bf16_m_grouped_gemm_nt_masked = m_grouped_bf16_gemm_nt_masked
+    except ImportError:
+        # Expected behavior for CUDA runtime version before 12.1
+        pass
+
+# Some alias for legacy supports
+# TODO: remove these later
+try:
     fp8_m_grouped_gemm_nt_masked = m_grouped_fp8_gemm_nt_masked
     bf16_m_grouped_gemm_nt_masked = m_grouped_bf16_gemm_nt_masked
-except ImportError:
-    # Expected behavior for CUDA runtime version before 12.1
+except NameError:
     pass
 
 # Some utils
@@ -80,10 +136,11 @@ from . import utils
 from .utils import *
 
 # Legacy Triton kernels for A100
-try:
-    from . import legacy
-except Exception as e:
-    print(f'Failed to load legacy DeepGEMM A100 Triton kernels: {e}')
+if not _IS_ROCM:
+    try:
+        from . import legacy
+    except Exception as e:
+        print(f'Failed to load legacy DeepGEMM A100 Triton kernels: {e}')
 
 # Initialize CPP modules
 def _find_cuda_home() -> str:
@@ -104,9 +161,10 @@ def _find_cuda_home() -> str:
     return cuda_home
 
 
-_C.init(
-    os.path.dirname(os.path.abspath(__file__)), # Library root directory path
-    _find_cuda_home()                           # CUDA home
-)
+if not _IS_ROCM:
+    _C.init(
+        os.path.dirname(os.path.abspath(__file__)), # Library root directory path
+        _find_cuda_home()                           # CUDA home
+    )
 
 __version__ = '2.3.0'

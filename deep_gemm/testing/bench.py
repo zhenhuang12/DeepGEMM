@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import torch
 
 
@@ -21,15 +22,22 @@ def bench(fn, num_warmups: int = 5, num_tests: int = 10,
         x @ y
 
     # Testing
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-    start_event.record()
-    for i in range(num_tests):
-        fn()
-    end_event.record()
-    torch.cuda.synchronize()
-
-    return start_event.elapsed_time(end_event) / num_tests / 1e3
+    try:
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for i in range(num_tests):
+            fn()
+        end_event.record()
+        torch.cuda.synchronize()
+        return start_event.elapsed_time(end_event) / num_tests / 1e3
+    except Exception:
+        torch.cuda.synchronize()
+        start_time = time.perf_counter()
+        for i in range(num_tests):
+            fn()
+        torch.cuda.synchronize()
+        return (time.perf_counter() - start_time) / num_tests
 
 
 class empty_suppress:
@@ -95,16 +103,20 @@ def bench_kineto(fn, kernel_names, num_tests: int = 30,
 
     # Profile
     suppress = suppress_stdout_stderr if suppress_kineto_output else empty_suppress
-    with suppress():
-        schedule = torch.profiler.schedule(wait=1, warmup=0, active=1, repeat=1)
-        profiler = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA], schedule=schedule)
-        with profiler:
-            for i in range(2):
-                for _ in range(num_tests):
-                    if flush_l2:
-                        torch.empty(flush_l2_size, dtype=torch.int, device='cuda').zero_()
-                    fn()
-                profiler.step()
+    try:
+        with suppress():
+            schedule = torch.profiler.schedule(wait=1, warmup=0, active=1, repeat=1)
+            profiler = torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA], schedule=schedule)
+            with profiler:
+                for i in range(2):
+                    for _ in range(num_tests):
+                        if flush_l2:
+                            torch.empty(flush_l2_size, dtype=torch.int, device='cuda').zero_()
+                        fn()
+                    profiler.step()
+    except Exception:
+        t = bench(fn, num_tests=num_tests)
+        return (t,) * len(kernel_names) if is_tuple else t
 
     # Parse the profiling table
     prof_lines = profiler.key_averages().table(sort_by='cuda_time_total', max_name_column_width=100).split('\n')
@@ -133,5 +145,9 @@ def bench_kineto(fn, kernel_names, num_tests: int = 30,
                         total_num += int(num_str)
                         break
         kernel_times.append(total_time / total_num if total_num > 0 else 0)
+
+    if all(t == 0 for t in kernel_times):
+        fallback_t = bench(fn, num_tests=num_tests)
+        return tuple([fallback_t] * len(kernel_names)) if is_tuple else fallback_t
 
     return tuple(kernel_times) if is_tuple else kernel_times[0]
